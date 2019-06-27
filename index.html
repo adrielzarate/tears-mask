@@ -1,0 +1,140 @@
+<html>
+  <head>
+    <!-- Load TensorFlow.js -->
+    <style>
+        html, body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            background-color: transparent;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script> 
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/posenet"></script>
+ </head>
+ 
+  <body>
+    <video id="myVideo" muted="muted"></video>
+    <canvas id="myCanvas" width="600" height="600"></canvas>
+  </body>
+  <script>
+
+    const videoWidth = 600;
+    const videoHeight = 600;
+    const video = document.getElementById('myVideo');
+    const dots = [];
+
+    function DotSettings(x, y) {
+        this.x = x;
+        this.y = y;
+        this.speed = Math.round(Math.random() * 5) + 1;
+        this.w = this.h = this.speed;
+        ctx.fillStyle = 'cyan';
+        this.alpha = 50;
+    }
+
+    DotSettings.prototype.updatePosition = function() {
+        this.y += this.speed;
+    };
+
+    DotSettings.prototype.updateColor = function() {
+        this.alpha -= .2;
+    };
+
+    DotSettings.prototype.drawPoint = function() {
+        this.updatePosition();
+        this.updateColor();
+        ctx.beginPath();
+        ctx.rect(this.x, this.y, this.w, this.h);
+        ctx.fill();
+    };
+
+    DotSettings.prototype.finished = function() {
+        return this.alpha < 0;
+    };
+
+    async function setupCamera() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error(
+            'Browser API navigator.mediaDevices.getUserMedia not available');
+      }
+
+      video.width = videoWidth;
+      video.height = videoHeight;
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        'audio': false,
+        'video': {
+          facingMode: 'user',
+          width: videoWidth,
+          height: videoHeight,
+        },
+      });
+      video.srcObject = stream;
+
+      return new Promise((resolve) => {
+        video.onloadedmetadata = () => {
+          resolve(video);
+        };
+      });
+    }
+
+    async function loadVideo() {
+      const video = await setupCamera();
+      video.play();
+      return video;
+    }
+
+    loadVideo();
+      
+    const imageScaleFactor = 0.5;
+    const outputStride = 16;
+    const flipHorizontal = false;
+
+    const canvas = document.getElementById('myCanvas');
+    const ctx = canvas.getContext('2d');
+    ctx.strokeStyle = "#FF0000";
+
+    function draw(kp) {
+        ctx.clearRect(0, 0, videoWidth, videoHeight);
+        dots.push(new DotSettings(kp[1].position.x, kp[1].position.y));
+        dots.push(new DotSettings(kp[2].position.x, kp[2].position.y));
+    }
+
+    function clearDots() {
+        ctx.clearRect(0, 0, videoWidth, videoHeight);
+        for (let i = 0; i < dots.length; i++) {
+            if (dots[i].finished() && dots.length > 1) dots.splice(i, 1);
+            dots[i].drawPoint();
+        }
+        requestAnimationFrame(clearDots);
+    }
+    clearDots();
+
+    posenet
+        .load()
+        .then(function(net) {
+            video.play();
+
+            setInterval(() => {
+                net
+                .estimatePoses(video, flipHorizontal, outputStride)
+                .then(function(pose) {
+                    draw(pose[0].keypoints);
+                });
+            }, 100);
+            
+        }
+    )
+    .catch(err => {
+        console.log(err.message);
+    });
+
+  </script> 
+</html>
